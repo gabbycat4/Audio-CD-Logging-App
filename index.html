@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CD Collection Logger (Large)</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --muted: #666;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --danger: #dc2626;
+    --border: #e5e7eb;
+    --shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--accent);
+    color: white;
+    padding: 1rem 1.25rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  .count { font-size: 0.95rem; opacity: 0.9; margin-top: 0.25rem; }
+  .controls {
+    padding: 1rem 1.25rem;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  .controls input, .controls select, .controls button {
+    padding: 0.6rem 0.9rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 1rem;
+  }
+  .controls input[type="search"] { flex: 1; min-width: 160px; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: #64748b; }
+  button.danger { background: var(--danger); }
+  button.small { padding: 0.4rem 0.7rem; font-size: 0.9rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+    padding: 1rem 1.25rem 2rem;
+  }
+  .card {
+    background: var(--card);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .card img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    background: #e5e7eb;
+  }
+  .card-body { padding: 0.75rem; flex: 1; display: flex; flex-direction: column; }
+  .card-body h3 { margin: 0 0 0.25rem; font-size: 1rem; line-height: 1.3; }
+  .card-body p { margin: 0.15rem 0; font-size: 0.85rem; color: var(--muted); }
+  .card-actions {
+    margin-top: auto;
+    padding-top: 0.5rem;
+    display: flex;
+    gap: 0.4rem;
+  }
+  .pagination-top { border-top: none; border-bottom: 1px solid var(--border); padding: 0.6rem 1rem; }
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: white;
+    border-top: 1px solid var(--border);
+  }
+  .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .modal.open { display: flex; }
+  .modal-content {
+    background: white;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 1.25rem;
+  }
+  .form-group { margin-bottom: 0.9rem; }
+  .form-group label { display: block; margin-bottom: 0.3rem; font-weight: 500; }
+  .form-group input, .form-group textarea {
+    width: 100%;
+    padding: 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+  }
+  .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  .image-preview { max-width: 100%; max-height: 180px; margin-top: 0.5rem; border-radius: 8px; }
+  .empty { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+  .status { font-size: 0.85rem; color: var(--muted); padding: 0 1.25rem; }
+  @media print {
+    header, .controls, .card-actions, .modal, button, .pagination, .pagination-top { display: none !important; }
+    .grid { grid-template-columns: repeat(3, 1fr); }
+    .card { break-inside: avoid; box-shadow: none; border: 1px solid #ccc; }
+  }
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  }
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f2937">
+<link rel="icon" href="icon-192.png">
+</head>
+<body>
+<header>
+  <h1>CD Collection</h1>
+  <div class="count" id="count">Loading…</div>
+</header>
+
+<div class="controls">
+  <input type="search" id="search" placeholder="Search artist or album…">
+  <select id="sort">
+    <option value="artist-asc">Artist A–Z</option>
+    <option value="artist-desc">Artist Z–A</option>
+    <option value="album-asc">Album A–Z</option>
+    <option value="year-desc">Year (newest)</option>
+    <option value="year-asc">Year (oldest)</option>
+  </select>
+  <button id="addBtn">+ Add CD</button>
+  <button class="secondary" id="exportJson">Export JSON</button>
+  <button class="secondary" id="exportTxt">Export TXT</button>
+  <button id="pasteBtn">Paste &amp; Add</button>
+  <button class="secondary" id="importBtn">Import</button>
+  <button class="secondary" id="promptBtn">Copy AI Prompt</button>
+  <button class="secondary" onclick="window.print()">Print</button>
+  <input type="file" id="importFile" accept=".json" style="display:none">
+</div>
+<div class="status" id="status"></div>
+
+<div class="pagination pagination-top" id="paginationTop"></div>
+<div class="grid" id="grid"></div>
+<div class="pagination" id="pagination"></div>
+
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <h2 id="modalTitle">Add CD</h2>
+    <form id="form">
+      <div class="form-group">
+        <label>Artist *</label>
+        <input type="text" id="artist" required>
+      </div>
+      <div class="form-group">
+        <label>Album name *</label>
+        <input type="text" id="album" required>
+      </div>
+      <div class="form-group">
+        <label>Release year (optional)</label>
+        <input type="number" id="year" min="1900" max="2100" placeholder="Leave blank if unknown">
+      </div>
+      <div class="form-group">
+        <label>Genre (optional)</label>
+        <input type="text" id="genre">
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea id="notes" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Image</label>
+        <!-- Added capture="environment" to directly activate the rear camera on mobile devices like the S20 FE -->
+        <input type="file" id="imageFile" accept="image/*" capture="environment">
+        <input type="url" id="imageUrl" placeholder="Or paste image URL">
+        <img id="preview" class="image-preview" style="display:none">
+      </div>
+      <div class="form-actions">
+        <button type="submit">Save</button>
+        <button type="button" class="secondary" id="cancelBtn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="pasteModal">
+  <div class="modal-content">
+    <h2>Paste &amp; Add CDs</h2>
+    <p style="margin:0 0 .7rem;color:#666;font-size:.9rem">Paste Google's response here. Code fences, extra text, or several batches pasted together are fine.</p>
+    <div class="form-group">
+      <textarea id="pasteText" rows="10" placeholder='[ { "artist": "...", "album": "..." }, ... ]'></textarea>
+    </div>
+    <div class="status" id="pasteInfo"></div>
+    <div class="form-actions">
+      <button type="button" id="pasteAddBtn" disabled>Add to collection</button>
+      <button type="button" class="secondary" id="pasteClipBtn">Paste from clipboard</button>
+      <button type="button" class="secondary" id="pasteCancelBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DB_NAME = 'CDCollectionDB';
+const DB_VERSION = 1;
+const STORE = 'cds';
+const ITEMS_PER_PAGE = 48;
+
+let db;
+let allCds = [];
+let filtered = [];
+let currentPage = 1;
+let editingId = null;
+let searchTimeout;
+
+const grid = document.getElementById('grid');
+const countEl = document.getElementById('count');
+const statusEl = document.getElementById('status');
+const searchInput = document.getElementById('search');
+const sortSelect = document.getElementById('sort');
+const paginationEl = document.getElementById('pagination');
+const paginationTopEl = document.getElementById('paginationTop');
+const modal = document.getElementById('modal');
+const form = document.getElementById('form');
+const preview = document.getElementById('preview');
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const database = e.target.result;
+      if (!database.objectStoreNames.contains(STORE)) {
+        database.createObjectStore(STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadAll() {
+  statusEl.textContent = 'Loading collection…';
+  const tx = db.transaction(STORE, 'readonly');
+  const store = tx.objectStore(STORE);
+  return new Promise((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveCd(cd) {
+  const tx = db.transaction(STORE, 'readwrite');
+  const store = tx.objectStore(STORE);
+  return new Promise((resolve, reject) => {
+    const req = store.put(cd);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function deleteCdFromDB(id) {
+  const tx = db.transaction(STORE, 'readwrite');
+  const store = tx.objectStore(STORE);
+  return new Promise((resolve, reject) => {
+    const req = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const max = 400;
+      let { width, height } = img;
+      if (width > height) {
+        if (width > max) { height *= max / width; width = max; }
+      } else {
+        if (height > max) { width *= max / height; height = max; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      URL.revokeObjectURL(url);
+      resolve(dataUrl);
+    };
+    img.onerror = () => resolve('');
+    img.src = url;
+  });
+}
+
+function applyFilters() {
+  const q = searchInput.value.toLowerCase().trim();
+  const sort = sortSelect.value;
+
+  filtered = allCds.filter(cd =>
+    !q ||
+    (cd.artist && cd.artist.toLowerCase().includes(q)) ||
+    (cd.album && cd.album.toLowerCase().includes(q))
+  );
+
+  filtered.sort((a, b) => {
+    if (sort === 'artist-asc') return (a.artist || '').localeCompare(b.artist || '');
+    if (sort === 'artist-desc') return (b.artist || '').localeCompare(a.artist || '');
+    if (sort === 'album-asc') return (a.album || '').localeCompare(b.album || '');
+    if (sort === 'year-desc') return (b.year || 0) - (a.year || 0);
+    if (sort === 'year-asc') return (a.year || 0) - (b.year || 0);
+    return 0;
+  });
+
+  currentPage = 1;
+  render();
+}
+
+const NO_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#999" font-size="14">No image</text></svg>');
+
+function render() {
+  countEl.textContent = `${allCds.length} CD${allCds.length === 1 ? '' : 's'}`;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  if (currentPage > totalPages) currentPage = totalPages;
+
+  const start = (currentPage - 1) * ITEMS_PER_PAGE;
+  const pageItems = filtered.slice(start, start + ITEMS_PER_PAGE);
+
+  if (pageItems.length === 0) {
+    grid.innerHTML = '<div class="empty">No CDs match your search. Tap “+ Add CD” to start.</div>';
+  } else {
+    grid.innerHTML = pageItems.map(cd => `
+      <div class="card">
+        <img src="${cd.image || NO_IMG}" alt="" loading="lazy">
+        <div class="card-body">
+          <h3>${escapeHtml(cd.artist)}</h3>
+          <p><strong>${escapeHtml(cd.album)}</strong></p>
+          <p>${cd.year || '—'}${cd.genre ? ' · ' + escapeHtml(cd.genre) : ''}</p>
+          ${cd.notes ? `<p style="font-size:0.8rem">${escapeHtml(cd.notes).slice(0,80)}${cd.notes.length>80?'…':''}</p>` : ''}
+          <div class="card-actions">
+            <button class="small secondary" onclick="editCd('${cd.id}')">Edit</button>
+            <button class="small danger" onclick="deleteCd('${cd.id}')">Delete</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  if (totalPages <= 1) {
+    paginationEl.innerHTML = '';
+    paginationTopEl.innerHTML = '';
+    paginationTopEl.style.display = 'none';
+  } else {
+    paginationTopEl.style.display = '';
+    paginationEl.innerHTML = paginationTopEl.innerHTML = `
+      <button class="secondary" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})">Previous</button>
+      <span>Page ${currentPage} of ${totalPages}</span>
+      <button class="secondary" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})">Next</button>
+    `;
+  }
+  statusEl.textContent = filtered.length !== allCds.length ? `Showing ${filtered.length} of ${allCds.length}` : '';
+}
+
+function changePage(p) {
+  currentPage = p;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
+}
+
+function openModal(title = 'Add CD') {
+  document.getElementById('modalTitle').textContent = title;
+  modal.classList.add('open');
+}
+
+function closeModal() {
+  modal.classList.remove('open');
+  form.reset();
+  preview.style.display = 'none';
+  preview.src = '';
+  editingId = null;
+}
+
+document.getElementById('addBtn').onclick = () => {
+  editingId = null;
+  openModal('Add CD');
+};
+
+document.getElementById('cancelBtn').onclick = closeModal;
+modal.onclick = e => { if (e.target === modal) closeModal(); };
+
+document.getElementById('imageFile').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  statusEl.textContent = 'Compressing image…';
+  const compressed = await compressImage(file);
+  preview.src = compressed;
+  preview.style.display = 'block';
+  document.getElementById('imageUrl').value = '';
+  statusEl.textContent = '';
+};
+
+document.getElementById('imageUrl').oninput = e => {
+  if (e.target.value) {
+    preview.src = e.target.value;
+    preview.style.display = 'block';
+    document.getElementById('imageFile').value = '';
+  } else {
+    preview.style.display = 'none';
+    preview.src = '';
+  }
+};
+
+form.onsubmit = async e => {
+  e.preventDefault();
+  
+  const cd = {
+    id: editingId || 'cd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+    artist: document.getElementById('artist').value.trim(),
+    album: document.getElementById('album').value.trim(),
+    year: parseInt(document.getElementById('year').value) || null,
+    genre: document.getElementById('genre').value.trim(),
+    notes: document.getElementById('notes').value.trim(),
+    image: preview.src || ''
+  };
+
+  await saveCd(cd);
+
+  if (editingId) {
+    const idx = allCds.findIndex(c => c.id === editingId);
+    if (idx !== -1) allCds[idx] = cd;
+  } else {
+    allCds.push(cd);
+  }
+
+  applyFilters();
+  closeModal();
+};
+
+window.editCd = async function(id) {
+  const cd = allCds.find(c => c.id === id);
+  if (!cd) return;
+  editingId = id;
+  document.getElementById('artist').value = cd.artist;
+  document.getElementById('album').value = cd.album;
+  document.getElementById('year').value = cd.year || '';
+  document.getElementById('genre').value = cd.genre || '';
+  document.getElementById('notes').value = cd.notes || '';
+  if (cd.image) {
+    preview.src = cd.image;
+    preview.style.display = 'block';
+  }
+  openModal('Edit CD');
+};
+
+window.deleteCd = async function(id) {
+  if (!confirm('Delete this CD?')) return;
+  await deleteCdFromDB(id);
+  allCds = allCds.filter(c => c.id !== id);
+  applyFilters();
+};
+
+searchInput.oninput = () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(applyFilters, 250);
+};
+sortSelect.onchange = applyFilters;
+
+document.getElementById('exportJson').onclick = () => {
+  const blob = new Blob([JSON.stringify(allCds, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cd-collection-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+};
+
+document.getElementById('exportTxt').onclick = () => {
+  const text = allCds.map(cd =>
+    `${cd.artist} – ${cd.album}${cd.year ? ' (' + cd.year + ')' : ''}${cd.genre ? ' [' + cd.genre + ']' : ''}${cd.notes ? '\n  ' + cd.notes : ''}`
+  ).join('\n\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cd-collection-${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+};
+
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+
+importBtn.onclick = () => importFile.click();
+importFile.onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async evt => {
+    try {
+      const imported = JSON.parse(evt.target.result);
+      if (Array.isArray(imported)) {
+        for (const item of imported) {
+          if (item.artist && item.album) {
+            if (!item.id) item.id = 'cd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            await saveCd(item);
+          }
+        }
+        allCds = await loadAll();
+        applyFilters();
+        alert('Collection successfully imported!');
+      } else {
+        alert('Invalid backup structure format.');
+      }
+    } catch(err) {
+      alert('Error parsing JSON backup file.');
+    }
+  };
+  reader.readAsText(file);
+};
+
+// ---------- Paste & Add ----------
+const pasteModal = document.getElementById('pasteModal');
+const pasteText = document.getElementById('pasteText');
+const pasteInfo = document.getElementById('pasteInfo');
+const pasteAddBtn = document.getElementById('pasteAddBtn');
+let pendingCds = [];
+
+// Pulls every {...} object out of messy text (handles fences, chatter, multiple arrays, trailing commas)
+function extractObjects(text) {
+  const out = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { if (depth > 0) inStr = true; }
+    else if (c === '{') { if (depth === 0) start = i; depth++; }
+    else if (c === '}' && depth > 0) {
+      depth--;
+      if (depth === 0) {
+        try { out.push(JSON.parse(text.slice(start, i + 1).replace(/,\s*}/g, '}'))); } catch (e) {}
+      }
+    }
+  }
+  return out;
+}
+
+const dupKey = cd => ((cd.artist || '') + '|' + (cd.album || '')).toLowerCase().trim();
+
+function analyzePaste() {
+  const objs = extractObjects(pasteText.value).filter(o => o && o.artist && o.album);
+  const existing = new Set(allCds.map(dupKey));
+  const seen = new Set();
+  pendingCds = [];
+  let dupes = 0;
+  for (const o of objs) {
+    const k = dupKey(o);
+    if (existing.has(k) || seen.has(k)) { dupes++; continue; }
+    seen.add(k);
+    pendingCds.push(o);
+  }
+  if (!pasteText.value.trim()) pasteInfo.textContent = '';
+  else pasteInfo.textContent = `Found ${pendingCds.length} new CD${pendingCds.length === 1 ? '' : 's'}` +
+    (dupes ? ` (${dupes} duplicate${dupes === 1 ? '' : 's'} will be skipped)` : '');
+  pasteAddBtn.disabled = pendingCds.length === 0;
+}
+
+document.getElementById('pasteBtn').onclick = () => {
+  pasteText.value = ''; pasteInfo.textContent = ''; pasteAddBtn.disabled = true;
+  pasteModal.classList.add('open');
+  pasteText.focus();
+};
+document.getElementById('pasteCancelBtn').onclick = () => pasteModal.classList.remove('open');
+pasteModal.onclick = e => { if (e.target === pasteModal) pasteModal.classList.remove('open'); };
+pasteText.oninput = analyzePaste;
+
+document.getElementById('pasteClipBtn').onclick = async () => {
+  try {
+    pasteText.value = await navigator.clipboard.readText();
+    analyzePaste();
+  } catch (e) {
+    pasteInfo.textContent = 'Clipboard blocked by browser. Long-press the box and paste instead.';
+  }
+};
+
+pasteAddBtn.onclick = async () => {
+  pasteAddBtn.disabled = true;
+  for (const o of pendingCds) {
+    // Always make a fresh id: Google reuses ids like cd_annihilator_01 in every batch
+    await saveCd({
+      id: 'cd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      artist: String(o.artist).trim(),
+      album: String(o.album).trim(),
+      year: parseInt(o.year) || null,
+      genre: o.genre ? String(o.genre).trim() : '',
+      notes: o.notes ? String(o.notes).trim() : '',
+      image: o.image || ''
+    });
+  }
+  const n = pendingCds.length;
+  allCds = await loadAll();
+  applyFilters();
+  pasteText.value = '';
+  pendingCds = [];
+  pasteInfo.textContent = `Added ${n} CD${n === 1 ? '' : 's'}. Paste the next batch whenever you're ready.`;
+};
+
+// ---------- Copy AI Prompt ----------
+const AI_PROMPT = `Could you give the correct JSON file for these CDs in the picture?
+
+Return ONLY a JSON array, one object per CD, using exactly this structure:
+[
+  {
+    "id": "cd_artist_01",
+    "artist": "Artist name",
+    "album": "Album title",
+    "year": 2004,
+    "genre": "Genre",
+    "notes": "",
+    "image": ""
+  }
+]
+
+Rules: year is a number (or null if unsure), keep notes and image as empty strings unless there is something worth noting (e.g. "EP", "Remastered edition"), and add no text outside the JSON.`;
+
+document.getElementById('promptBtn').onclick = async () => {
+  const btn = document.getElementById('promptBtn');
+  let ok = false;
+  try { await navigator.clipboard.writeText(AI_PROMPT); ok = true; }
+  catch (e) {
+    const t = document.createElement('textarea');
+    t.value = AI_PROMPT; document.body.appendChild(t); t.select();
+    try { ok = document.execCommand('copy'); } catch (e2) {}
+    t.remove();
+  }
+  btn.textContent = ok ? 'Copied!' : 'Copy failed';
+  setTimeout(() => btn.textContent = 'Copy AI Prompt', 1800);
+};
+
+async function initApp() {
+  try {
+    db = await openDB();
+    allCds = await loadAll();
+    applyFilters();
+  } catch (err) {
+    console.error("Database boot sequence crashed:", err);
+    statusEl.textContent = "Error setting up application database store.";
+  }
+}
+
+initApp();
+
+// Offline support + ask the browser not to wipe our data
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+</script>
+</body>
+</html>
